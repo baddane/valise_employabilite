@@ -1,0 +1,6 @@
+# Normalise les fins de ligne : LF dans le dépôt (les .md sont générés/édités sous Windows).
+* text=auto eol=lf
+
+*.docx binary
+*.xlsx binary
+*.bat text eol=crlf

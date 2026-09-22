@@ -1,0 +1,13 @@
+# Vercel
+.vercel/
+
+# Systèmes / éditeurs
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+~$*
+
+# Node (outils de génération)
+node_modules/
+npm-debug.log*

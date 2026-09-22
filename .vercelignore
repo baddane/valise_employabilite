@@ -1,0 +1,7 @@
+# Fichiers de travail : jamais publiés sur le site déployé.
+outils/
+.claude/
+.htaccess
+.gitattributes
+*.bat
+*.py
