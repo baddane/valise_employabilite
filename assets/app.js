@@ -260,12 +260,74 @@
   }
 
   /* ------------------------------------------------------------------
+   * Carte mentale : construction de l'arbre et montage du composant
+   * ------------------------------------------------------------------ */
+  function arbre() {
+    var nFiches = DATA.docs.filter(function (d) { return d.folder !== '00'; }).length;
+    return {
+      id: 'root', kind: 'root', label: 'Valise employabilité',
+      sub: MODULES.length + ' modules · ' + nFiches + ' fiches',
+      children: GROUPS.map(function (g) {
+        return {
+          id: g.id, kind: 'group', label: g.label.split(' — ')[0],
+          children: MODULES.filter(function (m) { return m.group === g.id; }).map(function (m) {
+            var enfants = m.docs.map(function (d) {
+              return {
+                id: 'd:' + d.id, kind: 'doc', label: d.title, sub: '~' + d.minutes + ' min',
+                icon: d.icon || '📄', href: '#/d/' + href(d.id),
+                tip: d.title + (d.summary ? ' — ' + d.summary : '')
+              };
+            }).concat(m.files.map(function (f) {
+              return {
+                id: 'f:' + f.file, kind: 'file', label: f.name.replace(/\.[^.]+$/, '').replace(/-/g, ' '),
+                sub: f.name.split('.').pop().toUpperCase() + ' · ' + fmtSize(f.size), icon: '⇩',
+                href: href(f.file), download: true, tip: 'Télécharger ' + f.name
+              };
+            }));
+            return {
+              id: 'm:' + m.num, kind: 'module', num: m.num, label: m.title,
+              sub: enfants.length + ' fiche' + (enfants.length > 1 ? 's' : ''),
+              href: '#/m/' + m.num, children: enfants
+            };
+          })
+        };
+      }).filter(function (g) { return g.children.length; })
+    };
+  }
+
+  /* Filtre de la carte : titres + texte intégral des fiches. */
+  function carteMatch(n, q) {
+    var f = fold(q);
+    if (fold(n.label).indexOf(f) >= 0) return true;
+    if (n.kind !== 'doc') return false;
+    var rec = INDEX_BY_ID[n.id.slice(2)];
+    return !!rec && rec.fplain.indexOf(f) >= 0;
+  }
+
+  var carte = null;
+  function monterCarte(hote, plein) {
+    if (!window.ValiseCarte || !hote) return;
+    if (carte) { carte.detruire(); carte = null; }
+    carte = ValiseCarte(hote, {
+      tree: arbre(),
+      match: carteMatch,
+      wheelZoom: plein,
+      hint: plein
+        ? 'Cliquez un module pour déplier ses fiches · glissez pour déplacer · molette pour zoomer · ↗ ouvre la page du module'
+        : 'Cliquez un module pour déplier ses fiches · glissez pour déplacer · Ctrl + molette pour zoomer',
+      onOpen: closeDrawer
+    });
+    return carte;
+  }
+
+  /* ------------------------------------------------------------------
    * Barre latérale
    * ------------------------------------------------------------------ */
   var side = document.getElementById('side-nav');
   function buildSidebar() {
     var h = '<a class="s-link" data-route="home" href="#/"><span class="s-ic">⌂</span>Accueil</a>';
     if (SOMMAIRE) h += '<a class="s-link" data-route="d/' + esc(SOMMAIRE.id) + '" href="#/d/' + href(SOMMAIRE.id) + '"><span class="s-ic">☰</span>Sommaire général</a>';
+    h += '<a class="s-link" data-route="carte" href="#/carte"><span class="s-ic">✳</span>Carte de la valise</a>';
     h += '<a class="s-link" data-route="telechargements" href="#/telechargements"><span class="s-ic">⇩</span>Téléchargements</a>';
     GROUPS.forEach(function (g) {
       var mods = MODULES.filter(function (m) { return m.group === g.id; });
@@ -358,12 +420,24 @@
         }).join('') + '</div>';
       }).join('');
     }
+    monterCarte(app.querySelector('#carte-hote'), false);
     reveal();
     document.title = "Valise de l'expert en employabilité";
     if (anchor) {
       var el = document.getElementById(anchor);
       if (el) setTimeout(function () { el.scrollIntoView(); }, 0);
     }
+  }
+
+  function viewCarte(num) {
+    app.innerHTML = '<div class="page wrap mapfull">' + crumbs([{ t: 'Carte de la valise' }]) +
+      '<header class="dhead"><h1>Carte de la valise</h1>' +
+      '<p class="lead">Les ' + MODULES.length + ' modules et leurs fiches, reliés par famille. ' +
+      'Dépliez, filtrez, ouvrez — tout est à un clic.</p></header>' +
+      '<div id="carte-hote"><p class="muted">Carte indisponible — utilisez le menu de gauche pour naviguer.</p></div></div>';
+    document.title = 'Carte de la valise — Valise Employabilité';
+    var c = monterCarte(app.querySelector('#carte-hote'), true);
+    if (c && num && MOD_BY_NUM[num]) setTimeout(function () { c.ouvrirModule('m:' + num); }, 260);
   }
 
   function viewModule(num) {
@@ -377,6 +451,7 @@
       '<h1>' + esc(m.title) + '</h1>' + (m.desc ? '<p class="lead">' + esc(m.desc) + '</p>' : '') +
       '<div class="mstats">' + m.docs.length + ' fiche' + (m.docs.length > 1 ? 's' : '') +
       (m.files.length ? ' · ' + m.files.length + ' classeur' : '') + ' · dossier <code>' + esc(m.folder) + '/</code></div>' +
+      '<div class="dactions"><a class="btn ghost" href="#/carte?m=' + m.num + '">✳ Voir dans la carte</a></div>' +
       '</div></header>' +
       '<div class="dlist">' + m.docs.map(docCard).join('') + m.files.map(fileCard).join('') + '</div>' +
       '<nav class="pager">' +
@@ -478,6 +553,7 @@
     closeSearch();
     if (!path || path === 'accueil') viewHome();
     else if (HOME_ANCHORS[path]) viewHome(path);
+    else if (path === 'carte') { key = 'carte'; viewCarte(params.m); }
     else if ((m = path.match(/^m\/(\d{2})$/))) { key = 'm/' + m[1]; viewModule(m[1]); }
     else if ((m = path.match(/^d\/(.+)$/))) { key = 'd/' + m[1]; viewDoc(m[1], query, section); }
     else if (path === 'telechargements') { key = 'telechargements'; viewDownloads(); }
@@ -535,6 +611,9 @@
       .replace(/_{3,}/g, ' ').replace(/[ \t]+/g, ' ');
     return { d: d, plain: plain, fplain: fold(plain), ftitle: fold(d.title) };
   });
+  var INDEX_BY_ID = {};
+  INDEX.forEach(function (r) { INDEX_BY_ID[r.d.id] = r; });
+
   function search(q) {
     var terms = fold(q).split(/\s+/).filter(function (t) { return t.length > 1; });
     if (!terms.length) return [];
